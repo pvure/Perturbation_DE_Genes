@@ -1,90 +1,63 @@
 import anndata
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import re 
+import os # Import os module to check if file exists
 
+# --- Configuration ---
+# Input file path (the curated but not yet filtered file)
+input_adata_path = "srivatsan20_processed.h5ad"
+# Output file path (where the filtered data will be saved)
+output_adata_path = "srivatsan20_filtered.h5ad"
+# Separator indicating multiple perturbations to remove
+separator_to_remove = ','
 
-processed_adata_path = "/Users/pranayvure/Srivatsan_DE/srivatsan20_processed.h5ad" 
-import anndata
-import pandas as pd
-import numpy as np
-# No need for 're' if we only check for a literal comma
-
-# Define the path to the processed AnnData file
-processed_adata_path = "srivatsan20_processed.h5ad"
-
+# --- Main Logic ---
 try:
-    print(f"Attempting to load data from: {processed_adata_path}")
-    adata = anndata.read_h5ad(processed_adata_path)
+    # --- Load Data ---
+    print(f"Attempting to load data from: {input_adata_path}")
+    if not os.path.exists(input_adata_path):
+         raise FileNotFoundError(f"Input file not found: {input_adata_path}")
+    adata = anndata.read_h5ad(input_adata_path)
     print(f"Successfully loaded data: {adata.shape[0]} cells x {adata.shape[1]} genes")
 
-    # --- Part 1: Identify and Show Examples Containing Commas ---
-    print("\n--- Identifying Perturbations Containing Commas ---")
+    # --- Identify Cells to Remove ---
+    if 'perturbation' not in adata.obs.columns:
+        raise KeyError("Column 'perturbation' not found in adata.obs. Cannot perform filtering.")
 
-    if 'perturbation' in adata.obs.columns:
-        separator_to_check = ','
+    print(f"\nIdentifying cells where 'perturbation' contains '{separator_to_remove}'...")
+    # Create boolean mask (True for cells to REMOVE - those containing the separator)
+    mask_to_remove = adata.obs['perturbation'].astype(str).str.contains(separator_to_remove, regex=False)
+    num_to_remove = mask_to_remove.sum()
 
-        # Use regex=False for simple string checking
-        comma_mask = adata.obs['perturbation'].astype(str).str.contains(separator_to_check, regex=False)
-        
-        num_comma_cells = comma_mask.sum()
-
-        if num_comma_cells > 0:
-            print(f"Found {num_comma_cells} cells where 'perturbation' contains a comma ('{separator_to_check}').")
-            
-            print("\nA few unique examples:")
-            comma_obs = adata.obs[comma_mask]
-            unique_examples = comma_obs['perturbation'].unique()
-            print(unique_examples[:min(len(unique_examples), 10)]) # Show up to 10 unique examples
-        else:
-             print(f"Found 0 cells where 'perturbation' contains a comma ('{separator_to_check}').")
-
+    if num_to_remove == 0:
+        print(f"Found 0 cells containing '{separator_to_remove}'. No filtering needed based on this criterion.")
+        print(f"Saving the original data to '{output_adata_path}' as no filtering was applied.")
+        # If no filtering is needed, you might still want to save it under the new name
+        # or skip saving. Here, we save it anyway for consistency.
+        adata_filtered = adata.copy() # Create a copy to avoid modifying original if needed elsewhere
     else:
-         print("\nSkipped investigation: 'perturbation' column not found in adata.obs.")
+        print(f"Found {num_to_remove} cells containing '{separator_to_remove}'. These will be removed.")
 
-    # --- Part 2: Code to Remove Cells with Commas ---
-    print("\n--- Code Snippet for Removing Cells with Commas ---")
-    if 'perturbation' in adata.obs.columns and num_comma_cells > 0:
+        # --- Filter Data ---
+        print("\nFiltering data...")
+        # Keep cells that do NOT contain the separator (using ~)
+        # Use .copy() to ensure adata_filtered is a new object in memory
+        adata_filtered = adata[~mask_to_remove, :].copy()
+        print(f"Original shape: {adata.shape}")
+        print(f"Filtered shape: {adata_filtered.shape}")
 
-        # Create a boolean mask: True for cells TO REMOVE (containing comma)
-        # We recalculate it here just to be clear in the final snippet
-        mask_to_remove_comma = adata.obs['perturbation'].astype(str).str.contains(',', regex=False)
+    # --- Save Filtered Data ---
+    print(f"\nSaving filtered data to: {output_adata_path}")
+    # Add compression to potentially reduce file size
+    adata_filtered.write(output_adata_path, compression='gzip')
+    print("Filtered data saved successfully.")
 
-        # Calculate how many cells will be kept vs removed
-        cells_to_remove_count = mask_to_remove_comma.sum()
-        cells_to_keep_count = (~mask_to_remove_comma).sum()
-
-        print(f"\nOriginal number of cells: {adata.n_obs}")
-        print(f"Number of cells to be removed (contain comma): {cells_to_remove_count}")
-        print(f"Number of cells to be kept (do NOT contain comma): {cells_to_keep_count}")
-
-        print("\nCode to perform the filtering (removes cells with commas):")
-        print("```python")
-        print("# --- Filtering Code (Comma Removal) ---")
-        print("# Ensure 'adata' is your loaded AnnData object")
-        print("")
-        print("# Create boolean mask (True for cells to REMOVE - those containing a comma)")
-        print("mask_to_remove_comma = adata.obs['perturbation'].astype(str).str.contains(',', regex=False)")
-        print("")
-        print("# Keep cells that do NOT contain a comma (using ~)")
-        print("adata_filtered = adata[~mask_to_remove_comma, :].copy()")
-        print("")
-        print("# Verify the new shape")
-        print("print(f'Original shape: {adata.shape}')")
-        print("print(f'Filtered shape: {adata_filtered.shape}')")
-        print("```")
-
-    elif 'perturbation' not in adata.obs.columns:
-        print("\nCannot provide filtering code: 'perturbation' column not found.")
-    elif num_comma_cells == 0:
-        print("\nNo cells found containing commas. No filtering needed for this condition.")
-
-
-except FileNotFoundError:
-    print(f"Error: The file '{processed_adata_path}' was not found.")
-    print("Please ensure the processed file exists in the correct location.")
+except FileNotFoundError as fnf_error:
+    print(f"Error: {fnf_error}")
+    print("Please ensure the input file exists at the specified path.")
+except KeyError as key_error:
+     print(f"Error: {key_error}")
+     print("Please check the structure of your input AnnData object.")
 except Exception as e:
     print(f"An unexpected error occurred: {e}")
     # import traceback
