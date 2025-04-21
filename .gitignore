@@ -1,7 +1,7 @@
-# Ignore the virtual environment
+# Ignore the virtual environment folder
 srivatsan/
 
-# Ignore large data file
+# Ignore the processed data file
 srivatsan20_processed.h5ad
 
 # Ignore Python cache files
